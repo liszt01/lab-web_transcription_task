@@ -1,6 +1,6 @@
 # 文字入力タスク
 
-`phrase_set.csv` の study 1 / practice / set 1（5 フレーズ）を順番に出題する、iPhone ブラウザ向けの小さなウェブアプリです。
+`phrase_set.csv` の study 1 / practice / set 1（10 フレーズ）を順番に出題する、iPhone ブラウザ向けの小さなウェブアプリです。
 
 ## 起動
 
