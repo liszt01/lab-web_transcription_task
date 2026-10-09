@@ -11,6 +11,10 @@ const promptText = document.querySelector('#prompt-text');
 const promptKana = document.querySelector('#prompt-kana');
 const progressLabel = document.querySelector('#progress-label');
 const metricsNode = document.querySelector('#metrics');
+const savedResultsNode = document.querySelector('#saved-results');
+const savedResultsStatus = document.querySelector('#saved-results-status');
+const downloadAgainButton = document.querySelector('#download-again');
+const resultsStorageKey = 'transcription:last-completed-results';
 
 const csvResponse = await fetch('./src/assets/data/phrase_set.csv');
 if (!csvResponse.ok) throw new Error('フレーズセットを読み込めませんでした');
@@ -33,6 +37,12 @@ let compositionTimer = null;
 let compositionObservedValue = '';
 let compositionText = '';
 let pendingCompositionDelete = 0;
+let savedResults = null;
+restoreSavedResults();
+
+downloadAgainButton.addEventListener('click', () => {
+  if (savedResults) downloadResults(savedResults);
+});
 
 function parsePhrases(csv) {
   const lines = csv.replace(/^\uFEFF/, '').trim().split(/\r?\n/);
@@ -219,7 +229,11 @@ actionButton.addEventListener('click', () => {
   if (state === 'input') showResult();
   else if (state === 'result') {
     index += 1;
-    if (index >= phrases.length) { downloadResults(); resetTask(); }
+    if (index >= phrases.length) {
+      saveCompletedResults();
+      resetTask();
+      downloadResults(savedResults);
+    }
     else beginPhrase();
   }
 });
@@ -299,12 +313,46 @@ function align(source, target) {
   return { alignment: alignment.reverse(), stats };
 }
 
-function downloadResults() {
+function restoreSavedResults() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(resultsStorageKey));
+    if (!stored || typeof stored.csv !== 'string' || typeof stored.filename !== 'string' ||
+        typeof stored.participantId !== 'string') return;
+    savedResults = stored;
+    showSavedResults(true);
+  } catch {
+    // An unavailable storage area must not prevent the task from starting.
+  }
+}
+
+function showSavedResults(persisted) {
+  savedResultsNode.hidden = false;
+  savedResultsStatus.textContent = `参加者 ID: ${savedResults.participantId} の直近の完了記録を再ダウンロードできます。` +
+    (persisted ? '' : ' ブラウザ内に保存できなかったため、ページを閉じたり再読み込みしたりする前にダウンロードしてください。');
+}
+
+function saveCompletedResults() {
   const columns = ['participant_id', 'study', 'set_type', 'set_number', 'phrase_order', 'presented_text', 'reference_text', 'submitted_text', 'time_s', 'cpm', 'ter_percent', 'f', 'c', 'inf', 'if'];
   const escape = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
   const csv = [columns, ...rows.map(row => columns.map(c => row[c]))].map(row => row.map(escape).join(',')).join('\r\n');
-  const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }));
-  const link = document.createElement('a'); link.href = url; link.download = `transcription_${safeFilename(participantId)}_${new Date().toISOString().replaceAll(':', '-')}.csv`; link.click();
+  savedResults = {
+    participantId,
+    csv: '\uFEFF' + csv,
+    filename: `transcription_${safeFilename(participantId)}_${new Date().toISOString().replaceAll(':', '-')}.csv`,
+  };
+  let persisted = false;
+  try {
+    localStorage.setItem(resultsStorageKey, JSON.stringify(savedResults));
+    persisted = true;
+  } catch {
+    // Keep the in-memory copy available even when persistent storage is full or blocked.
+  }
+  showSavedResults(persisted);
+}
+
+function downloadResults(result) {
+  const url = URL.createObjectURL(new Blob([result.csv], { type: 'text/csv;charset=utf-8' }));
+  const link = document.createElement('a'); link.href = url; link.download = result.filename; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 function safeFilename(value) { return value.replace(/[^\p{L}\p{N}._-]+/gu, '_').slice(0, 60) || 'participant'; }
