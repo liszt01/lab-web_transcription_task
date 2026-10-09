@@ -37,6 +37,8 @@ let compositionTimer = null;
 let compositionObservedValue = '';
 let compositionText = '';
 let pendingCompositionDelete = 0;
+let deferredCompositionDelete = 0;
+let compositionDeleteTimer = null;
 let savedResults = null;
 restoreSavedResults();
 
@@ -61,6 +63,7 @@ function beginPhrase() {
   input.readOnly = false;
   composing = false; compositionSettling = false; compositionBaseline = ''; compositionObservedValue = '';
   compositionText = ''; pendingCompositionDelete = 0;
+  clearDeferredCompositionDelete();
   if (compositionTimer !== null) clearTimeout(compositionTimer);
   compositionTimer = null;
   input.hidden = false; input.classList.remove('result-colored'); coloredOutput.hidden = true; coloredOutput.replaceChildren();
@@ -95,8 +98,10 @@ participantInput.addEventListener('input', () => participantInput.setCustomValid
 input.addEventListener('focus', () => {
   if (state === 'input' && startedAt === null) startedAt = performance.now();
 });
-input.addEventListener('compositionstart', () => {
+input.addEventListener('compositionstart', event => {
   if (state !== 'input') return;
+  if (compositionSettling) flushComposition();
+  settleDeferredCompositionDelete();
   composing = true;
   compositionBaseline = input.value;
   compositionObservedValue = input.value;
@@ -127,11 +132,16 @@ input.addEventListener('compositionupdate', event => {
     // composition text becoming a shorter prefix distinguishes it from the
     // internal clear-and-commit sequence used when confirming a candidate.
     recordCompositionCorrection(compositionText.length - next.length);
+  } else if (shrankFromEnd) {
+    deferCompositionDelete(compositionText.length);
   }
   compositionText = next;
 });
-input.addEventListener('compositionend', () => {
+input.addEventListener('compositionend', event => {
   if (state !== 'input') return;
+  // A nonempty committed string identifies an IME clear-and-commit, even
+  // when the final DOM input event arrives after compositionend.
+  if (event.data) clearDeferredCompositionDelete();
   composing = false;
   compositionSettling = true;
   // Browsers may dispatch the final input event just before or just after compositionend.
@@ -150,6 +160,13 @@ input.addEventListener('input', event => {
     if (pendingCompositionDelete > 0 && value !== compositionObservedValue) {
       recordCompositionCorrection(pendingCompositionDelete);
       pendingCompositionDelete = 0;
+      if (value === compositionBaseline) compositionText = '';
+    } else if (event.inputType === 'deleteCompositionText' &&
+        value === compositionBaseline && value !== compositionObservedValue &&
+        compositionText.length > 0 && deferredCompositionDelete === 0) {
+      // Also handle keyboards which clear the DOM without compositionupdate.
+      deferCompositionDelete(changedMiddle(compositionObservedValue, value).removed);
+      compositionText = '';
     }
     if (value !== compositionObservedValue) {
       if (startedAt === null) startedAt = performance.now();
@@ -192,9 +209,35 @@ function recordCompositionCorrection(deletedCharacters) {
   fixCount += 1;
 }
 
+function clearDeferredCompositionDelete() {
+  if (compositionDeleteTimer !== null) clearTimeout(compositionDeleteTimer);
+  compositionDeleteTimer = null;
+  deferredCompositionDelete = 0;
+}
+
+function deferCompositionDelete(deletedCharacters) {
+  if (deferredCompositionDelete > 0 || deletedCharacters === 0) return;
+  deferredCompositionDelete = deletedCharacters;
+  // IME confirmation can temporarily clear the same text as Backspace.
+  // Inspect the settled DOM after the clear-and-commit event sequence.
+  compositionDeleteTimer = setTimeout(() => {
+    if (state === 'input') settleDeferredCompositionDelete();
+    else clearDeferredCompositionDelete();
+  }, 0);
+}
+
+function settleDeferredCompositionDelete() {
+  const deleted = deferredCompositionDelete;
+  clearDeferredCompositionDelete();
+  if (deleted > 0 && input.value === compositionBaseline) {
+    recordCompositionCorrection(deleted);
+  }
+}
+
 function flushComposition() {
   if (compositionTimer !== null) clearTimeout(compositionTimer);
   compositionTimer = null;
+  settleDeferredCompositionDelete();
   if (composing || compositionSettling) {
     const value = input.value;
     const finalChangeWasUnobserved = value !== compositionObservedValue;
