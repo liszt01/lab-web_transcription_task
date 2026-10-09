@@ -14,7 +14,8 @@ input:focus, textarea:focus { border-color: #315fce; box-shadow: 0 0 0 3px #315f
 textarea { resize: vertical; min-height: 100px; line-height: 1.65; }
 .colored-output { width: 100%; min-height: 100px; padding: 13px 14px; border: 1px solid #cbd3de; border-radius: 12px; background: #fff; font-size: 18px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 button { min-height: 48px; border: 0; border-radius: 12px; padding: 0 18px; font-weight: 700; cursor: pointer; touch-action: manipulation; }
-.primary { color: white; background: #2458c6; } .primary:active { background: #1a469f; }
+.primary { color: white; background: #2458c6; } .primary:active:not(:disabled) { background: #1a469f; }
+.primary:disabled { color: #64748b; background: #e2e8f0; cursor: not-allowed; }
 .secondary { color: #334155; background: #edf1f6; }
 .task-card { display: grid; gap: 20px; }
 .progress-row, .actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

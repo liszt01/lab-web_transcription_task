@@ -59,6 +59,7 @@ function beginPhrase() {
   progressLabel.textContent = `${index + 1} / ${phrases.length}`;
   metricsNode.hidden = true; metricsNode.replaceChildren();
   actionButton.textContent = 'Submit';
+  actionButton.disabled = true;
   resultCancel.hidden = true;
 }
 
@@ -130,8 +131,10 @@ input.addEventListener('compositionend', () => {
     flushComposition();
   }, 0);
 });
-input.addEventListener('input', () => {
+input.addEventListener('input', event => {
   if (state !== 'input') return;
+  // Once typing starts, keep Submit enabled even if all text is deleted.
+  if (input.value.length > 0) actionButton.disabled = false;
   if (composing || event.isComposing) {
     const value = input.value;
     if (pendingCompositionDelete > 0 && value !== compositionObservedValue) {
@@ -212,6 +215,7 @@ function changedMiddle(before, after) {
 }
 
 actionButton.addEventListener('click', () => {
+  if (actionButton.disabled) return;
   if (state === 'input') showResult();
   else if (state === 'result') {
     index += 1;
